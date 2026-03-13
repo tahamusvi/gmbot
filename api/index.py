@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import google.generativeai as genai
 import requests
 import os
+import concurrent.futures  # اضافه شدن کتابخونه مدیریت زمان
 
 app = Flask(__name__)
 
@@ -30,6 +31,10 @@ def send_message(chat_id, text):
     payload = {"chat_id": chat_id, "text": text}
     requests.post(url, json=payload)
 
+# تابعی که فقط وظیفه حرف زدن با هوش مصنوعی رو داره
+def get_ai_response(text):
+    return model.generate_content(text).text
+
 @app.route('/', methods=['POST', 'GET'])
 def webhook():
     if request.method == 'POST':
@@ -40,16 +45,17 @@ def webhook():
             user_text = update["message"]["text"]
 
             try:
-                response = model.generate_content(user_text)
-                bot_reply = response.text
+                # اجرای تابع با محدودیت زمانی ۸ ثانیه
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(get_ai_response, user_text)
+                    # اگر تو 8 ثانیه جواب نیومد، ارور TimeoutError میده
+                    bot_reply = future.result(timeout=8) 
+                    
+            except concurrent.futures.TimeoutError:
+                # این ارور رو خودمون قبل از ورسل شکار می‌کنیم
+                bot_reply = "⏱ **ارور تایم‌اوت:** استاد در حال نوشتن یک جواب طولانی و تحلیلی بود که سرور رایگان ورسل زمان رو قطع کرد! لطفاً سوالت رو خردتر بپرس (مثلاً به جای «کلیدها رو توضیح بده»، بپرس «کلید خارجی (FK) چیست؟»)."
             except Exception as e:
-                # هک جذاب: گرفتن لیست مدل‌های مجاز در صورت بروز خطا
-                bot_reply = f"❌ ارور سیستم:\n{str(e)}\n\n"
-                try:
-                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                    bot_reply += "✅ لیست مدل‌هایی که کلید شما پشتیبانی می‌کند:\n" + "\n".join(models)
-                except Exception as inner_e:
-                    bot_reply += f"خطا در دریافت لیست مدل‌ها: {str(inner_e)}"
+                bot_reply = f"❌ ارور سیستم:\n{str(e)}"
 
             send_message(chat_id, bot_reply)
             
