@@ -33,6 +33,8 @@ def webhook():
                 response = model.generate_content(user_text)
                 bot_reply = response.text
             except Exception as e:
+                # این خط اضافه شد تا ارور رو تو لاگ ورسل چاپ کنه
+                print(f"=== Gemini Error Details ===\n{str(e)}") 
                 bot_reply = "یه مشکلی تو ارتباط با هوش مصنوعی پیش اومد!"
 
             # ارسال جواب به کاربر در تلگرام
